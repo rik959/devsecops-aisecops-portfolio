@@ -11,6 +11,10 @@ RUN pip install uv==0.13.9
 RUN uv python install 3.13 && uv venv /opt/venv --python 3.13
 COPY requirements.txt .
 RUN uv pip install --python /opt/venv/bin/python --no-cache -r requirements.txt
+# Strip install-time tooling the runtime never uses (the bundled setuptools 70.x
+# carried CVE-2025-47273): smaller image, smaller attack surface.
+RUN find /python /opt/venv -depth \( -name 'setuptools*' -o -name 'pip' -o -name 'pip-*' \
+        -o -path '*/ensurepip/_bundled' -o -name '__pycache__' \) -exec rm -rf {} +
 COPY app /app/app
 
 FROM gcr.io/distroless/cc-debian13:nonroot
