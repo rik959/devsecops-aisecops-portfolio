@@ -3,6 +3,7 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: {{ .Release.Name }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "llm-gateway.labels" . | nindent 4 }}
   {{- with .Values.serviceAccount.annotations }}
@@ -16,6 +17,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ .Release.Name }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "llm-gateway.labels" . | nindent 4 }}
 spec:
@@ -31,6 +33,7 @@ apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
   name: {{ .Release.Name }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "llm-gateway.labels" . | nindent 4 }}
 spec:
@@ -44,6 +47,7 @@ apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: {{ .Release.Name }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "llm-gateway.labels" . | nindent 4 }}
 spec:

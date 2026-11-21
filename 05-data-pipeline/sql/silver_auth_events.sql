@@ -1,8 +1,13 @@
 -- Bronze -> Silver: type, clean, standardise, de-duplicate.
 -- Parameters (substituted by the runner): {bronze_path}, {dt}
+-- Explicit bronze schema (a data contract): no type inference, so an all-null
+-- column or a new upstream field can't silently change the types downstream.
 WITH raw AS (
     SELECT *
-    FROM read_json_auto('{bronze_path}', format = 'newline_delimited', union_by_name = true)
+    FROM read_json('{bronze_path}', format = 'newline_delimited', columns = {{
+        event_id: 'VARCHAR', ts: 'VARCHAR', "user": 'VARCHAR', src_ip: 'VARCHAR',
+        outcome: 'VARCHAR', mfa: 'BOOLEAN', user_agent: 'VARCHAR'
+    }})
 ),
 typed AS (
     SELECT
