@@ -19,7 +19,7 @@ client ◄── audit log ◄── output sanitisation ◄──────�
 | Token-bucket rate limiting + prompt size cap | LLM10 Unbounded Consumption | `app/ratelimit.py` |
 | API keys stored as SHA-256 hashes, constant-time compare | Auth hardening | `app/main.py` |
 | Audit log with prompt hashes only (no raw prompts) | Logging without creating a PII store | `app/audit.py` |
-| Distroless, non-root container | Supply chain / runtime | `Dockerfile` |
+| Distroless (`cc-debian13`) non-root container with a current standalone CPython; smoke-tested and Trivy-gated in CI | Supply chain / runtime | `Dockerfile` |
 
 ## Run it
 
