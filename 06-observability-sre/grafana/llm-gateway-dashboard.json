@@ -1,0 +1,67 @@
+{
+  "title": "LLM Security Gateway — SLO & Security",
+  "uid": "llm-gateway-slo",
+  "schemaVersion": 39,
+  "version": 1,
+  "time": { "from": "now-6h", "to": "now" },
+  "refresh": "30s",
+  "tags": ["slo", "security", "llm"],
+  "templating": {
+    "list": [
+      { "name": "datasource", "type": "datasource", "query": "prometheus" }
+    ]
+  },
+  "panels": [
+    {
+      "type": "stat", "title": "Availability (28d)", "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 3,
+        "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 0.995 } ] } } },
+      "targets": [ { "expr": "1 - (sum(increase(http_requests_total{job=\"llm-gateway\",handler=\"/v1/chat\",status=~\"5..\"}[28d])) / sum(increase(http_requests_total{job=\"llm-gateway\",handler=\"/v1/chat\"}[28d])))" } ]
+    },
+    {
+      "type": "stat", "title": "Error budget remaining", "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "percentunit",
+        "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "orange", "value": 0.25 }, { "color": "green", "value": 0.5 } ] } } },
+      "targets": [ { "expr": "1 - ((sum(increase(http_requests_total{job=\"llm-gateway\",handler=\"/v1/chat\",status=~\"5..\"}[28d])) / sum(increase(http_requests_total{job=\"llm-gateway\",handler=\"/v1/chat\"}[28d]))) / 0.005)" } ]
+    },
+    {
+      "type": "stat", "title": "Injection blocks (1h)", "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "uid": "${datasource}" },
+      "targets": [ { "expr": "sum(increase(llm_gateway_blocked_injection_total[1h]))" } ]
+    },
+    {
+      "type": "stat", "title": "PII redactions (1h)", "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "uid": "${datasource}" },
+      "targets": [ { "expr": "sum(increase(llm_gateway_pii_redactions_total[1h]))" } ]
+    },
+    {
+      "type": "timeseries", "title": "Burn rate (1h and 6h windows)", "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
+      "datasource": { "uid": "${datasource}" },
+      "targets": [
+        { "expr": "slo:llm_gateway_error_ratio:rate1h / 0.005", "legendFormat": "1h burn" },
+        { "expr": "slo:llm_gateway_error_ratio:rate6h / 0.005", "legendFormat": "6h burn" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "Latency p50 / p99", "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
+      "datasource": { "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.5, sum by (le) (rate(http_request_duration_seconds_bucket{job=\"llm-gateway\",handler=\"/v1/chat\"}[5m])))", "legendFormat": "p50" },
+        { "expr": "slo:llm_gateway_latency_p99:5m", "legendFormat": "p99" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "Security events by type", "gridPos": { "x": 0, "y": 12, "w": 24, "h": 8 },
+      "datasource": { "uid": "${datasource}" },
+      "targets": [
+        { "expr": "sum(rate(llm_gateway_blocked_injection_total[5m]))", "legendFormat": "injection blocked" },
+        { "expr": "sum by (entity) (rate(llm_gateway_pii_redactions_total[5m]))", "legendFormat": "redacted {{entity}}" },
+        { "expr": "sum by (action) (rate(llm_gateway_output_actions_total[5m]))", "legendFormat": "output {{action}}" },
+        { "expr": "sum(rate(llm_gateway_blocked_rate_limit_total[5m]))", "legendFormat": "rate limited" }
+      ]
+    }
+  ]
+}

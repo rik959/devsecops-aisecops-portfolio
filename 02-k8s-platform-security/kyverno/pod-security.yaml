@@ -1,0 +1,90 @@
+# Baseline workload hardening. Enforce in prod; run with
+# validationFailureAction: Audit first in brownfield clusters to measure impact.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: pod-security-hardening
+  annotations:
+    policies.kyverno.io/title: Pod security hardening
+    policies.kyverno.io/category: Pod Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Blocks privileged containers, privilege escalation, root users, host
+      namespaces, hostPath volumes and added capabilities; requires a read-only
+      root filesystem and the RuntimeDefault seccomp profile.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: no-privileged-or-escalation
+      match:
+        any:
+          - resources: { kinds: [Pod] }
+      validate:
+        message: "Privileged containers and privilege escalation are not allowed."
+        pattern:
+          spec:
+            =(initContainers):
+              - =(securityContext):
+                  =(privileged): "false"
+                  allowPrivilegeEscalation: "false"
+            containers:
+              - =(securityContext):
+                  =(privileged): "false"
+                securityContext:
+                  allowPrivilegeEscalation: "false"
+
+    - name: run-as-non-root
+      match:
+        any:
+          - resources: { kinds: [Pod] }
+      validate:
+        message: "Containers must run as non-root (runAsNonRoot: true)."
+        anyPattern:
+          - spec:
+              securityContext:
+                runAsNonRoot: "true"
+          - spec:
+              containers:
+                - securityContext:
+                    runAsNonRoot: "true"
+
+    - name: read-only-root-fs-and-drop-all
+      match:
+        any:
+          - resources: { kinds: [Pod] }
+      validate:
+        message: "Containers need readOnlyRootFilesystem: true and capabilities.drop: [ALL]."
+        pattern:
+          spec:
+            containers:
+              - securityContext:
+                  readOnlyRootFilesystem: "true"
+                  capabilities:
+                    drop: ["ALL"]
+
+    - name: seccomp-runtime-default
+      match:
+        any:
+          - resources: { kinds: [Pod] }
+      validate:
+        message: "Pods must use the RuntimeDefault (or Localhost) seccomp profile."
+        pattern:
+          spec:
+            securityContext:
+              seccompProfile:
+                type: "RuntimeDefault | Localhost"
+
+    - name: no-host-namespaces-or-hostpath
+      match:
+        any:
+          - resources: { kinds: [Pod] }
+      validate:
+        message: "hostNetwork, hostPID, hostIPC and hostPath volumes are not allowed."
+        pattern:
+          spec:
+            =(hostNetwork): "false"
+            =(hostPID): "false"
+            =(hostIPC): "false"
+            =(volumes):
+              - X(hostPath): "null"

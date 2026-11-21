@@ -1,0 +1,4 @@
+# Known-exploited CVEs (subset of CISA KEV format: one id per line)
+CVE-2024-3094
+CVE-2023-44487
+CVE-2023-4911

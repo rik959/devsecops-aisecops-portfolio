@@ -1,0 +1,83 @@
+# SLO: 99.5% of /v1/chat requests succeed (non-5xx) over 28 days.
+# Error budget = 0.5% ≈ 3h22m of full outage per 28 days.
+# Multi-window, multi-burn-rate alerts (Google SRE Workbook, ch. 5):
+#   page  : 14.4x burn over 1h AND 5m  -> 2% of budget gone in 1 hour
+#   page  : 6x    burn over 6h AND 30m -> 5% of budget gone in 6 hours
+#   ticket: 1x    burn over 3d AND 6h  -> on track to exhaust the budget
+groups:
+  - name: llm-gateway-slo-recordings
+    interval: 30s
+    rules:
+      - record: slo:llm_gateway_error_ratio:rate5m
+        expr: |
+          sum(rate(http_requests_total{job="llm-gateway",handler="/v1/chat",status=~"5.."}[5m]))
+          /
+          sum(rate(http_requests_total{job="llm-gateway",handler="/v1/chat"}[5m]))
+      - record: slo:llm_gateway_error_ratio:rate30m
+        expr: |
+          sum(rate(http_requests_total{job="llm-gateway",handler="/v1/chat",status=~"5.."}[30m]))
+          /
+          sum(rate(http_requests_total{job="llm-gateway",handler="/v1/chat"}[30m]))
+      - record: slo:llm_gateway_error_ratio:rate1h
+        expr: |
+          sum(rate(http_requests_total{job="llm-gateway",handler="/v1/chat",status=~"5.."}[1h]))
+          /
+          sum(rate(http_requests_total{job="llm-gateway",handler="/v1/chat"}[1h]))
+      - record: slo:llm_gateway_error_ratio:rate6h
+        expr: |
+          sum(rate(http_requests_total{job="llm-gateway",handler="/v1/chat",status=~"5.."}[6h]))
+          /
+          sum(rate(http_requests_total{job="llm-gateway",handler="/v1/chat"}[6h]))
+      - record: slo:llm_gateway_error_ratio:rate3d
+        expr: |
+          sum(rate(http_requests_total{job="llm-gateway",handler="/v1/chat",status=~"5.."}[3d]))
+          /
+          sum(rate(http_requests_total{job="llm-gateway",handler="/v1/chat"}[3d]))
+      - record: slo:llm_gateway_latency_p99:5m
+        expr: |
+          histogram_quantile(0.99,
+            sum by (le) (rate(http_request_duration_seconds_bucket{job="llm-gateway",handler="/v1/chat"}[5m])))
+
+  - name: llm-gateway-slo-alerts
+    rules:
+      - alert: LLMGatewayErrorBudgetFastBurn
+        expr: |
+          slo:llm_gateway_error_ratio:rate1h > (14.4 * 0.005)
+          and
+          slo:llm_gateway_error_ratio:rate5m > (14.4 * 0.005)
+        labels:
+          severity: page
+          team: platform-security
+        annotations:
+          summary: "LLM gateway burning error budget 14x too fast"
+          description: "Error ratio {{ $value | humanizePercentage }} over 1h. 2% of the 28-day budget is gone each hour."
+          runbook_url: "https://github.com/rik959/devsecops-aisecops-portfolio/blob/main/06-observability-sre/runbooks/llm-gateway-high-error-rate.md"
+      - alert: LLMGatewayErrorBudgetSlowBurn
+        expr: |
+          slo:llm_gateway_error_ratio:rate6h > (6 * 0.005)
+          and
+          slo:llm_gateway_error_ratio:rate30m > (6 * 0.005)
+        labels:
+          severity: page
+          team: platform-security
+        annotations:
+          summary: "LLM gateway burning error budget 6x too fast"
+          runbook_url: "https://github.com/rik959/devsecops-aisecops-portfolio/blob/main/06-observability-sre/runbooks/llm-gateway-high-error-rate.md"
+      - alert: LLMGatewayErrorBudgetAtRisk
+        expr: |
+          slo:llm_gateway_error_ratio:rate3d > 0.005
+          and
+          slo:llm_gateway_error_ratio:rate6h > 0.005
+        labels:
+          severity: ticket
+          team: platform-security
+        annotations:
+          summary: "LLM gateway on track to exhaust its 28-day error budget"
+      - alert: LLMGatewayLatencyHigh
+        expr: slo:llm_gateway_latency_p99:5m > 8
+        for: 10m
+        labels:
+          severity: ticket
+          team: platform-security
+        annotations:
+          summary: "p99 latency {{ $value | humanizeDuration }} (> 8s) for 10 minutes"

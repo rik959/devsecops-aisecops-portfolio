@@ -1,0 +1,50 @@
+# GitOps: Argo CD pulls the chart from this repo and reconciles it.
+# No cluster credentials live in CI; drift is detected and self-healed.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: llm-gateway
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: ai-platform
+  source:
+    repoURL: https://github.com/rik959/devsecops-aisecops-portfolio
+    targetRevision: main
+    path: 02-k8s-platform-security/helm/llm-gateway
+    helm:
+      releaseName: llm-gateway
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ai-gateway
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false   # namespace (with PSS labels) is managed by the platform
+      - ServerSideApply=true
+    retry:
+      limit: 3
+      backoff: { duration: 10s, factor: 2, maxDuration: 2m }
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: ai-platform
+  namespace: argocd
+spec:
+  description: AI platform workloads
+  sourceRepos:
+    - https://github.com/rik959/devsecops-aisecops-portfolio
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: ai-gateway
+  # Tenants cannot create cluster-scoped resources (no ClusterRoles, CRDs, webhooks).
+  clusterResourceWhitelist: []
+  namespaceResourceBlacklist:
+    - group: ""
+      kind: ResourceQuota
+    - group: ""
+      kind: LimitRange

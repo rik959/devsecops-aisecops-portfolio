@@ -1,0 +1,74 @@
+# Supply-chain admission controls: only signed images from trusted registries,
+# pinned by tag (never :latest), with an attached SBOM attestation.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: trusted-registries-no-latest
+  annotations:
+    policies.kyverno.io/title: Trusted registries and no latest tag
+    policies.kyverno.io/category: Supply Chain Security
+    policies.kyverno.io/severity: high
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: allowed-registries
+      match:
+        any:
+          - resources: { kinds: [Pod] }
+      validate:
+        message: "Images must come from ghcr.io/rik959 or the platform ECR."
+        pattern:
+          spec:
+            containers:
+              - image: "ghcr.io/rik959/* | *.dkr.ecr.*.amazonaws.com/secure-ai/*"
+    - name: no-latest-tag
+      match:
+        any:
+          - resources: { kinds: [Pod] }
+      validate:
+        message: "Use an immutable version tag or digest, not ':latest' or no tag."
+        pattern:
+          spec:
+            containers:
+              - image: "*:* & !*:latest"
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: verify-image-signatures
+  annotations:
+    policies.kyverno.io/title: Verify cosign keyless signatures and SBOM
+    policies.kyverno.io/category: Supply Chain Security
+    policies.kyverno.io/severity: critical
+    policies.kyverno.io/description: >-
+      Images must be signed by this repository's GitHub Actions workflow
+      (Sigstore keyless, Fulcio identity bound to the workflow on main) and carry
+      a CycloneDX SBOM attestation. Unsigned or third-party-signed images are rejected.
+spec:
+  validationFailureAction: Enforce
+  webhookTimeoutSeconds: 30
+  rules:
+    - name: verify-signature-and-sbom
+      match:
+        any:
+          - resources: { kinds: [Pod] }
+      verifyImages:
+        - imageReferences:
+            - "ghcr.io/rik959/*"
+          mutateDigest: true      # rewrite tag -> digest so what runs is what was verified
+          verifyDigest: true
+          attestors:
+            - entries:
+                - keyless:
+                    issuer: "https://token.actions.githubusercontent.com"
+                    subject: "https://github.com/rik959/devsecops-aisecops-portfolio/.github/workflows/supply-chain.yml@refs/heads/main"
+                    rekor:
+                      url: https://rekor.sigstore.dev
+          attestations:
+            - type: https://cyclonedx.org/bom
+              attestors:
+                - entries:
+                    - keyless:
+                        issuer: "https://token.actions.githubusercontent.com"
+                        subject: "https://github.com/rik959/devsecops-aisecops-portfolio/.github/workflows/supply-chain.yml@refs/heads/main"

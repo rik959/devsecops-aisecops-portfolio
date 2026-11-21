@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+*.egg-info/
+
+# Generated artifacts
+04-mlops-pipeline/artifacts/
+05-data-pipeline/data/
+mlruns/
+*.parquet
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+crash.log
+*.tfvars
+!*.tfvars.example
+.terraform.lock.hcl
+
+# Secrets / local
+.env
+*.pem
+*.key
+kubeconfig*
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store

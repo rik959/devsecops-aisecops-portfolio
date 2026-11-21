@@ -1,0 +1,59 @@
+# Security signals from the LLM gateway (project 03) and the cluster.
+# These are detection rules: they go to the security on-call / SIEM, not to SRE.
+groups:
+  - name: ai-security-detections
+    rules:
+      - alert: PromptInjectionSpike
+        # Blocked injections well above the trailing baseline: likely an active probe or campaign.
+        expr: |
+          sum(rate(llm_gateway_blocked_injection_total[10m]))
+            > 3 * sum(rate(llm_gateway_blocked_injection_total[1d] offset 10m)) + 0.05
+        for: 5m
+        labels:
+          severity: high
+          team: security
+          mitre_atlas: AML.T0051 # LLM Prompt Injection
+        annotations:
+          summary: "Prompt-injection blocks 3x above baseline"
+          runbook_url: "https://github.com/rik959/devsecops-aisecops-portfolio/blob/main/06-observability-sre/runbooks/prompt-injection-spike.md"
+
+      - alert: PIIRedactionSurge
+        # A sudden rise in redactions can mean a client is pasting customer data or secrets into prompts.
+        expr: sum(increase(llm_gateway_pii_redactions_total[15m])) > 50
+        labels:
+          severity: medium
+          team: security
+        annotations:
+          summary: "{{ $value }} PII/secret redactions in 15 minutes"
+
+      - alert: RateLimitAbuse
+        expr: sum(rate(llm_gateway_blocked_rate_limit_total[5m])) > 1
+        for: 10m
+        labels:
+          severity: medium
+          team: security
+        annotations:
+          summary: "Sustained rate-limit rejections: possible scraping or cost-exhaustion attack"
+
+  - name: kubernetes-security-detections
+    rules:
+      - alert: KyvernoPolicyViolationsRising
+        expr: sum by (policy_name) (increase(kyverno_policy_results_total{rule_result="fail"}[30m])) > 10
+        labels:
+          severity: medium
+          team: platform-security
+        annotations:
+          summary: "Kyverno policy {{ $labels.policy_name }} rejected >10 requests in 30m"
+
+      - alert: PodsInUnrestrictedNamespace
+        # Workloads running in namespaces that don't enforce Pod Security Standards 'restricted'.
+        expr: |
+          count(kube_pod_container_info * on(pod, namespace) group_left()
+                kube_pod_container_status_running) by (namespace)
+            and on(namespace) kube_namespace_labels{label_pod_security_kubernetes_io_enforce!="restricted"}
+        for: 15m
+        labels:
+          severity: low
+          team: platform-security
+        annotations:
+          summary: "Running pods in namespace {{ $labels.namespace }} without PSS 'restricted' enforcement"

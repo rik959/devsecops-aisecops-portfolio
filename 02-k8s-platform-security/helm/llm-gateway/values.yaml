@@ -1,0 +1,44 @@
+image:
+  repository: ghcr.io/rik959/llm-security-gateway
+  # Pin by digest in real deployments; Kyverno rewrites tags to verified digests anyway.
+  tag: "1.0.0"
+  digest: ""   # e.g. sha256:...; when set, the image is pinned by digest instead of tag
+  pullPolicy: IfNotPresent
+
+replicaCount: 3
+owner: platform-security
+
+serviceAccount:
+  create: true
+  # EKS Pod Identity / IRSA role for reading the upstream API key from Secrets Manager.
+  annotations: {}
+  automountToken: false   # the app never talks to the Kubernetes API
+
+env:
+  INJECTION_MODE: block
+  INJECTION_THRESHOLD: "0.5"
+  RATE_LIMIT_PER_MINUTE: "60"
+  LLM_BACKEND: mock
+
+# Secret (key: upstream-api-key) is created by External Secrets Operator from
+# AWS Secrets Manager / Vault and mounted read-only as a file, never put in values files.
+existingSecret: llm-gateway-secrets
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    memory: 256Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+pdb:
+  minAvailable: 2
+
+service:
+  port: 8080

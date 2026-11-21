@@ -1,0 +1,25 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+    groups:
+      actions: { patterns: ["*"] }
+  - package-ecosystem: pip
+    directories:
+      - /03-llm-security-gateway
+      - /04-mlops-pipeline
+      - /05-data-pipeline
+      - /07-vuln-management-automation
+    schedule: { interval: weekly }
+  - package-ecosystem: docker
+    directories:
+      - /03-llm-security-gateway
+      - /04-mlops-pipeline
+    schedule: { interval: weekly }
+  - package-ecosystem: terraform
+    directories:
+      - /01-terraform-aws-eks/environments/dev
+      - /01-terraform-aws-eks/modules/vpc
+      - /01-terraform-aws-eks/modules/eks
+    schedule: { interval: weekly }

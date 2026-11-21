@@ -1,0 +1,75 @@
+name: kubernetes
+
+on:
+  pull_request:
+    paths: ["02-k8s-platform-security/**", "06-observability-sre/**", ".github/workflows/kubernetes.yml"]
+  push:
+    branches: [main]
+    paths: ["02-k8s-platform-security/**", "06-observability-sre/**"]
+
+permissions:
+  contents: read
+
+jobs:
+  manifests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.3
+
+      - name: helm lint + render
+        run: |
+          helm lint 02-k8s-platform-security/helm/llm-gateway
+          helm template llm-gateway 02-k8s-platform-security/helm/llm-gateway \
+            --namespace ai-gateway > rendered.yaml
+
+      - name: kubeconform (schema validation incl. Kyverno/Argo CRDs)
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz | tar xz
+          ./kubeconform -summary -ignore-missing-schemas -kubernetes-version 1.31.0 \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            rendered.yaml 02-k8s-platform-security/kyverno 02-k8s-platform-security/network-policies \
+            02-k8s-platform-security/rbac 02-k8s-platform-security/argocd
+
+      # Documented, deliberate exceptions:
+      #   CKV_K8S_11  no CPU limit on purpose (avoids CFS throttling; memory limit is set)
+      #   CKV_K8S_43  digest pinning is enforced at admission (Kyverno mutateDigest) and via image.digest
+      #   CKV_K8S_15  IfNotPresent is correct for immutable, digest-pinned images
+      #   CKV2_K8S_6  NetworkPolicies live in 02-k8s-platform-security/network-policies, not in the chart
+      - name: Checkov (Kubernetes misconfiguration)
+        run: |
+          pip install checkov==3.2.*
+          checkov -f rendered.yaml --framework kubernetes --compact --quiet \
+            --skip-check CKV_K8S_11,CKV_K8S_43,CKV_K8S_15,CKV2_K8S_6
+
+      - name: promtool check rules
+        run: |
+          curl -sSL https://github.com/prometheus/prometheus/releases/download/v2.55.1/prometheus-2.55.1.linux-amd64.tar.gz | tar xz
+          ./prometheus-2.55.1.linux-amd64/promtool check rules 06-observability-sre/prometheus/*.yaml
+
+      - name: Kyverno CLI test (policies reject a bad pod, accept the chart)
+        run: |
+          curl -sSL https://github.com/kyverno/kyverno/releases/download/v1.13.2/kyverno-cli_v1.13.2_linux_x86_64.tar.gz | tar xz kyverno
+          cat > bad-pod.yaml <<'EOF'
+          apiVersion: v1
+          kind: Pod
+          metadata: { name: bad, namespace: ai-gateway }
+          spec:
+            containers:
+              - name: c
+                image: nginx:latest
+                securityContext: { privileged: true }
+          EOF
+          # The bad pod must produce failures; the rendered chart must produce none.
+          bad=$(./kyverno apply 02-k8s-platform-security/kyverno/pod-security.yaml --resource bad-pod.yaml 2>&1 || true)
+          echo "$bad" | tail -3
+          echo "$bad" | grep -Eq "fail: [1-9]" || { echo "bad pod was NOT rejected"; exit 1; }
+          good=$(./kyverno apply 02-k8s-platform-security/kyverno/pod-security.yaml --resource rendered.yaml 2>&1 || true)
+          echo "$good" | tail -3
+          echo "$good" | grep -Eq "fail: 0" || { echo "chart violates pod-security policy"; exit 1; }

@@ -1,0 +1,9 @@
+apiVersion: v2
+name: llm-gateway
+description: Hardened deployment of the LLM Security Gateway (project 03)
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+maintainers:
+  - name: Riktam Bera
+    url: https://github.com/rik959

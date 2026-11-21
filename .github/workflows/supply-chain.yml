@@ -1,0 +1,120 @@
+# Secure software supply chain for the gateway image:
+#   build -> scan (gate) -> SBOM -> push by digest -> cosign keyless sign
+#   -> attest SBOM + SLSA build provenance -> verify
+# Kyverno (02-k8s-platform-security/kyverno/supply-chain.yaml) verifies the same
+# signature identity at admission, so only images built HERE, on main, can run.
+name: supply-chain
+
+on:
+  push:
+    branches: [main]
+    paths: ["03-llm-security-gateway/**", ".github/workflows/supply-chain.yml"]
+  pull_request:
+    paths: ["03-llm-security-gateway/**"]
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/llm-security-gateway
+
+jobs:
+  build-scan-sign:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write          # push to GHCR
+      id-token: write          # Sigstore keyless OIDC
+      attestations: write      # GitHub build provenance
+      security-events: write   # Trivy SARIF
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build (load locally for scanning)
+        uses: docker/build-push-action@v6
+        with:
+          context: 03-llm-security-gateway
+          load: true
+          tags: ${{ env.IMAGE }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+
+      - name: Trivy image scan (gate on fixable CRITICAL/HIGH)
+        uses: aquasecurity/trivy-action@0.29.0
+        with:
+          image-ref: ${{ env.IMAGE }}:${{ github.sha }}
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+          format: json
+          output: trivy-image.json
+
+      - name: Triage report with vulnmgmt (project 07)
+        if: always()
+        run: |
+          python -m pip install -q pytest
+          cd 07-vuln-management-automation
+          python -m vulnmgmt.cli ../trivy-image.json --format markdown >> "$GITHUB_STEP_SUMMARY" || true
+
+      - name: Generate SBOM (CycloneDX)
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.IMAGE }}:${{ github.sha }}
+          format: cyclonedx-json
+          output-file: sbom.cdx.json
+
+      # ---- everything below only on main --------------------------------------
+      - name: Log in to GHCR
+        if: github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push
+        if: github.ref == 'refs/heads/main'
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: 03-llm-security-gateway
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:1.0.${{ github.run_number }}
+          cache-from: type=gha
+          provenance: false
+
+      - uses: sigstore/cosign-installer@v3
+        if: github.ref == 'refs/heads/main'
+
+      - name: Sign image (keyless) and attest SBOM
+        if: github.ref == 'refs/heads/main'
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          cosign sign --yes "${IMAGE}@${DIGEST}"
+          cosign attest --yes --type cyclonedx --predicate sbom.cdx.json "${IMAGE}@${DIGEST}"
+
+      - name: SLSA build provenance
+        if: github.ref == 'refs/heads/main'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+      - name: Verify signature (same check Kyverno runs at admission)
+        if: github.ref == 'refs/heads/main'
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          cosign verify "${IMAGE}@${DIGEST}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/supply-chain.yml@refs/heads/main"

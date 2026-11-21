@@ -1,0 +1,5 @@
+# Security-sensitive paths require owner review.
+*                                   @rik959
+/.github/workflows/                 @rik959
+/02-k8s-platform-security/kyverno/  @rik959
+/01-terraform-aws-eks/              @rik959

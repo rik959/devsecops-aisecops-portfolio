@@ -1,0 +1,80 @@
+name: terraform
+
+on:
+  pull_request:
+    paths: ["01-terraform-aws-eks/**", ".github/workflows/terraform.yml"]
+  push:
+    branches: [main]
+    paths: ["01-terraform-aws-eks/**"]
+
+permissions:
+  contents: read
+
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write   # upload Checkov SARIF to code scanning
+    defaults:
+      run:
+        working-directory: 01-terraform-aws-eks
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.10.3
+      - name: fmt
+        run: terraform fmt -recursive -check -diff
+      - name: validate
+        working-directory: 01-terraform-aws-eks/environments/dev
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate
+      - uses: terraform-linters/setup-tflint@v4
+      - name: tflint
+        run: |
+          tflint --init
+          tflint --recursive --format compact
+      - name: Checkov (IaC misconfiguration)
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: 01-terraform-aws-eks
+          framework: terraform
+          output_format: cli,sarif
+          output_file_path: console,checkov.sarif
+          soft_fail: false
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: checkov.sarif
+          category: checkov-terraform
+
+  # Plan against real AWS only on main, using OIDC (no stored AWS keys).
+  # Enable by setting repository variable AWS_ROLE_ARN to the output of `github_ci_role_arn`.
+  plan:
+    if: github.ref == 'refs/heads/main' && vars.AWS_ROLE_ARN != ''
+    needs: static
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: 01-terraform-aws-eks/environments/dev
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: eu-central-1
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.10.3
+      - run: terraform init -input=false
+      - run: terraform plan -input=false -lock-timeout=5m -out=tfplan

@@ -1,0 +1,11 @@
+# Extend the default gitleaks ruleset; allow-list deliberately fake credentials
+# that exist only to test the PII/secret redactor in project 03.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Synthetic test fixtures for the redaction guard"
+paths = [
+  '''03-llm-security-gateway/tests/.*''',
+  '''03-llm-security-gateway/evals/.*''',
+]

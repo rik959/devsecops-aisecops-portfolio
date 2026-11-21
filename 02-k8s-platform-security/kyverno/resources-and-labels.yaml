@@ -1,0 +1,78 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-resources-probes-owner
+  annotations:
+    policies.kyverno.io/title: Require requests/limits, probes and an owner label
+    policies.kyverno.io/category: Reliability
+    policies.kyverno.io/severity: medium
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: requests-and-memory-limit
+      match:
+        any:
+          - resources: { kinds: [Pod] }
+      validate:
+        message: "Set CPU/memory requests and a memory limit (no CPU limit needed: avoids CFS throttling)."
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  requests:
+                    cpu: "?*"
+                    memory: "?*"
+                  limits:
+                    memory: "?*"
+    - name: readiness-probe
+      match:
+        any:
+          - resources: { kinds: [Deployment, StatefulSet] }
+      validate:
+        message: "Containers must define a readinessProbe."
+        pattern:
+          spec:
+            template:
+              spec:
+                containers:
+                  - readinessProbe: {}
+    - name: owner-label
+      match:
+        any:
+          - resources: { kinds: [Deployment, StatefulSet, CronJob] }
+      validate:
+        message: "Add label 'app.kubernetes.io/owner' so alerts and CVEs route to a team."
+        pattern:
+          metadata:
+            labels:
+              app.kubernetes.io/owner: "?*"
+---
+# Generate a default-deny NetworkPolicy in every new namespace (secure by default).
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: generate-default-deny
+  annotations:
+    policies.kyverno.io/title: Default-deny NetworkPolicy for new namespaces
+    policies.kyverno.io/category: Multi-Tenancy
+spec:
+  rules:
+    - name: default-deny
+      match:
+        any:
+          - resources: { kinds: [Namespace] }
+      exclude:
+        any:
+          - resources:
+              namespaces: [kube-system, kube-public, kyverno]
+      generate:
+        apiVersion: networking.k8s.io/v1
+        kind: NetworkPolicy
+        name: default-deny-all
+        namespace: "{{request.object.metadata.name}}"
+        synchronize: true
+        data:
+          spec:
+            podSelector: {}
+            policyTypes: [Ingress, Egress]

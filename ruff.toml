@@ -1,0 +1,17 @@
+target-version = "py311"
+line-length = 120
+
+[lint]
+# pycodestyle, pyflakes, bugbear, bandit-style security rules, import sorting
+select = ["E", "F", "W", "B", "S", "I"]
+ignore = ["S101"]  # asserts are fine in tests
+
+[lint.pycodestyle]
+max-line-length = 160  # long regex literals in the injection rules
+
+[lint.per-file-ignores]
+"**/tests/**" = ["S", "B"]
+
+[lint.flake8-bugbear]
+# FastAPI's dependency-injection idiom is intentional.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Header", "fastapi.Query"]
