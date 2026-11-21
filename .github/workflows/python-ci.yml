@@ -40,7 +40,7 @@ jobs:
       - name: Install
         run: |
           if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; else pip install -r requirements.txt; fi
-          pip install ruff==0.8.4
+          pip install ruff==0.17.6
       - name: Lint
         run: ruff check .   # rules in /ruff.toml (incl. bandit-style S rules)
       - name: Test

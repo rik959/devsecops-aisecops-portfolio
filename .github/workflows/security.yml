@@ -53,6 +53,16 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Trivy fs scan (readable table in the log)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scanners: vuln,secret
+          skip-dirs: 03-llm-security-gateway/tests,03-llm-security-gateway/evals
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+          format: table
+          exit-code: "0"
       # IaC misconfiguration is gated by Checkov in terraform.yml / kubernetes.yml,
       # so Trivy here owns dependency CVEs and secrets (one gate per concern).
       - name: Trivy fs scan (dependency CVEs, secrets)

@@ -6,7 +6,7 @@ install:
 	@for p in $(PY_PROJECTS); do \
 	  if [ -f $$p/requirements-dev.txt ]; then pip install -r $$p/requirements-dev.txt; else pip install -r $$p/requirements.txt; fi; \
 	done
-	pip install ruff==0.8.4
+	pip install ruff==0.17.6
 
 test: evals train
 	@for p in $(PY_PROJECTS); do echo "== $$p"; (cd $$p && python -m pytest -q) || exit 1; done

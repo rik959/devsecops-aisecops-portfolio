@@ -1,10 +1,10 @@
-numpy==2.2.1
-pandas==2.2.3
-scikit-learn==1.6.0
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
-pydantic==2.10.4
-# optional: experiment tracking (training logs to MLflow when MLFLOW_TRACKING_URI is set)
-# mlflow==2.19.0
-pytest==8.3.4
+numpy==2.5.5
+pandas==3.1.1
+scikit-learn==1.9.1
+fastapi==0.165.0
+uvicorn[standard]==0.54.0
+pydantic==2.14.4
+pytest==9.2.0
 httpx==0.28.1  # FastAPI TestClient
+# optional: experiment tracking (training logs to MLflow when MLFLOW_TRACKING_URI is set)
+# mlflow
