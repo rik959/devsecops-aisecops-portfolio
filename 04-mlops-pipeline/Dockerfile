@@ -1,14 +1,14 @@
 # syntax=docker/dockerfile:1.7
 # Training runs in CI and produces artifacts/; this image only serves a model
 # whose checksum matches its model card.
-FROM python:3.12-slim AS builder
+FROM python:3.15-slim AS builder
 ENV PIP_NO_CACHE_DIR=1
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
-FROM python:3.12-slim
+FROM python:3.15-slim
 RUN useradd --uid 10001 --no-create-home --shell /usr/sbin/nologin app
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH" PYTHONUNBUFFERED=1 MODEL_DIR=/app/artifacts
