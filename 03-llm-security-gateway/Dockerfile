@@ -4,7 +4,7 @@
 # image yet, and python3-debian12 lags on OS patches (45 fixable HIGH CVEs when
 # this was switched), so the interpreter is supplied explicitly instead.
 
-FROM python:3.13-slim-trixie AS builder
+FROM python:3.15-slim-trixie AS builder
 ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1 \
     UV_PYTHON_INSTALL_DIR=/python UV_PYTHON_PREFERENCE=only-managed UV_LINK_MODE=copy
 RUN pip install uv==0.13.9
